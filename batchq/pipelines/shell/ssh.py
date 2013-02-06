@@ -46,6 +46,7 @@ class BaseSecureTerminal(BasePipe):
     def disconnect(self):
         if self._pipe.isalive():
             try:
+                self.set_timeout(0)
                 self.send_command("exit")
             except:
                 pass

@@ -17,8 +17,9 @@ class Machine(Module):
 
         if self.signature in QUEUE_REGISTER:
             q = QUEUE_REGISTER[self.signature]
-            if hasattr(q, "disconnect"):
-                q.disconnect()
+#            never disconnect because we want to check jobs later
+#            if hasattr(q, "disconnect"):
+#                q.disconnect()
 
 
         self.queue = self.queue_cls(**kwargs) if inherits is None else self.queue_cls(inherits, **kwargs) 
