@@ -342,5 +342,30 @@ function help() {
     echo "There is no such thing as help. Consider it a todo on my list."
 }
 
+##########################
+# PBS related functions
+function pbs_run_job() {
+    # TODO: add escaping to command
+    pushd $1 > /dev/null
+    batch_id=".batchq.$2"
+    cmd=$3
+    prepend=$4
+    parameters=$5
+    qsub_cmd="touch ${batch_id}.running ; ( ${prepend}${cmd} ) 1> ${batch_id}.running 2> ${batch_id}.error ; echo \$? > ${batch_id}.finished ;  if [ \$(cat ${batch_id}.finished) -ne 0 ] ; then mv ${batch_id}.finished ${batch_id}.failed  ;  fi"
+    rm -rf ${batch_id}.* && (
+	touch ${batch_id}.submitted ;
+	( echo "${qsub_cmd}" | qsub -o ${batch_id}.log ${parameters} ) |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } }' > ${batch_id}.pid ) > /dev/null 2>&1
+
+    popd > /dev/null
+}
+
+
+function pbs_submit_job() {
+    stat=$(int_status $1 $2)
+    echo $stat
+    if (( $stat <= ${PREPENDING} )) ; then
+	pbs_run_job "$@"
+    fi
+}
 
 
