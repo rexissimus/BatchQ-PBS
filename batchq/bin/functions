@@ -354,11 +354,9 @@ function pbs_run_job() {
     qsub_cmd="touch ${batch_id}.running ; ( ${prepend}${cmd} ) 1> ${batch_id}.running 2> ${batch_id}.error ; echo \$? > ${batch_id}.finished ;  if [ \$(cat ${batch_id}.finished) -ne 0 ] ; then mv ${batch_id}.finished ${batch_id}.failed  ;  fi"
     rm -rf ${batch_id}.* && (
 	touch ${batch_id}.submitted ;
-	( echo "${qsub_cmd}" | qsub -o ${batch_id}.log ${parameters} ) |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } }' > ${batch_id}.pid ) > /dev/null 2>&1
-
+	( echo "${qsub_cmd}" | qsub -o ${batch_id}.log -e /dev/null ${parameters} ) |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } }' > ${batch_id}.pid ) > /dev/null 2>&1
     popd > /dev/null
 }
-
 
 function pbs_submit_job() {
     stat=$(int_status $1 $2)
