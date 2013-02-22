@@ -5,6 +5,8 @@ from batchq.core.stack import current_machine
 from batchq.core.batch import Shell
 from batchq.decorators.cache import simple_cacheable, simple_class_cacheable, simple_call_cache, clear_simple_call_cache
 import random
+import hashlib
+
 # TODO: Fetch all PIDs at once and make a cache similar to BJOBS
 
 LSF_BJOBS_CACHE = {}
@@ -401,8 +403,8 @@ class PBS(Subshell):
 
     def _get_pbs_as_file(self):
         ## TODO: Clean up this implementation
-        if not self._pushw():
-            return {}
+        #if not self._pushw():
+        #    return {}
 
         ## Getting the output
         filename = ".batchq.tmp.%d" % random.randint(0, 1<< 32)
@@ -432,9 +434,17 @@ class PBS(Subshell):
             id = blocks[0].split('.')[0]
             state = blocks[4]
             dct[id] = state
-        self._popw()
         return dct
 
+    def get_job_info(self):
+        """ Returns job info like which node and
+        parameters the job was run with
+        
+        """
+        pid = self.pid()
+        cmd = "qstat -f1 %s" % self.pid()
+        ret = self.terminal.send_command(cmd)
+        return ret
 
     def _pbs_state(self):
         global PBS_QJOBS_CACHE
@@ -499,6 +509,16 @@ class PBS(Subshell):
         self._popw()
 
         return self._state
+
+    def generate_identifier(self):
+        ## TODO: Extract information from previous dependencies
+        ## TODO: maybe make it with MD5 or SHA
+        m = hashlib.md5()
+        if self.command is None:
+            return "unkown"
+        m.update(self.command)
+        m.update(self.working_directory)
+        return m.hexdigest() #slugify()
 
     def log(self):
         self._pushw()

@@ -44,7 +44,8 @@ class SFTPTerminal(BaseSecureTerminal):
 
     def pwd(self):
         res = self.send_command("pwd").split(": ",1)
-        return res[1].strip()
+        self._lazy_pwd = res[1].strip()
+        return self._lazy_pwd
 
     def local_pwd(self):
         res = self.send_command("lpwd").split(": ",1)

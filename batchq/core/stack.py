@@ -27,6 +27,10 @@ def select_machine(machine):
             shutil.copy2(src, os.path.join(lbh, f))
     machine.local.send_command("export PATH=$PATH:%s"%lbh)
 
+def use_machine(machine):
+    global MACHINE_STACK
+    MACHINE_STACK.append(machine)
+
 def end_machine():
     global MACHINE_STACK
     MACHINE_STACK = MACHINE_STACK[:-1]
