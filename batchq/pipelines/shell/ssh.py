@@ -66,7 +66,7 @@ class BaseSecureTerminal(BasePipe):
 
     def connect(self, server, username, password, port = 22, accept_fingerprint = False, command = "ssh", port_option = "-p %d", expect_token = "#-->", submit_token="\n", additional_arguments ="",debug_level = 3):
 
-        pop = port_option % int(port)
+        pop = port_option % int(port) if port else ''
         cmd = which(command)
         pipe = Process(cmd,[pop, additional_arguments, "%s@%s" % (username, server)], terminal_required = True)
 
@@ -80,7 +80,6 @@ class BaseSecureTerminal(BasePipe):
         out = self.expect()
 #        except:
 #            raise BaseSecureTerminalLoginError(self.buffer +"\nCommand executed: "+" ".join([cmd, pop, additional_arguments, "%s@%s" % (username, server)]))
-
 
         self.host_verification_message = None
         if "Host key verification failed." in out:
@@ -96,8 +95,9 @@ class BaseSecureTerminal(BasePipe):
             self.send_command("yes")
         
 
-        out = self.send_command(password, False)
-
+        if "Password:" in out or "password" in out:
+            # a password is expected
+            out = self.send_command(password, False)
 
         if "Password:" in out or "password" in out:
             print self.buffer

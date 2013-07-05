@@ -8,6 +8,7 @@ from batchq.batch.directories import CreateDirectory
 
 class Machine(Module, BQMachine):
     _input_ports = [('server', '(edu.utah.sci.vistrails.basic:String)', True),
+                    ('port', '(edu.utah.sci.vistrails.basic:Integer)', True),
                     ('username', '(edu.utah.sci.vistrails.basic:String)', True),
                     ('password', '(edu.utah.sci.vistrails.basic:String)', True),
                    ]
@@ -15,13 +16,14 @@ class Machine(Module, BQMachine):
     def compute(self):
         server = self.getInputFromPort('server') \
               if self.hasInputFromPort('server') else 'localhost'
+        port = self.getInputFromPort('port') \
+            if self.hasInputFromPort('port') else 22
         username = self.getInputFromPort('username') \
-              if self.hasInputFromPort('username') else current_user()
+                if self.hasInputFromPort('username') else current_user()
         password = self.getInputFromPort('password') \
-              if self.hasInputFromPort('password') else ''
-        print "suspended is:", self.suspended
-        self.machine = BQMachine(server, username, password)
-        # force creatrion of server-side help files
+                if self.hasInputFromPort('password') else ''
+        self.machine = BQMachine(server, username, password, port)
+        # force creation of server-side help files
         select_machine(self.machine)
         end_machine()
         self.setResult("value", self)
