@@ -75,7 +75,7 @@ class BaseSecureTerminal(BasePipe):
 
         self.set_timeout(15) 
 
-        self.push_expect(re.compile(r"(password:|Password:|\(yes/no\)\?|\$|sftp\>|(Host key verification failed.))"))
+        self.push_expect(re.compile(r"(password:|Password:|\(yes/no\)\?|\$|>|sftp\>|(Host key verification failed.))"))
 #        try:
         out = self.expect()
 #        except:
