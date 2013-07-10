@@ -388,9 +388,10 @@ class PBS(Subshell):
         super(PBS,self).__init__(terminal, command, working_directory, dependencies,identifier, **kwargs)
         
         prepend = ""
-        if self.additional_arguments['mpi']: prepend = "mpirun -np %d " % self.additional_arguments['processes']
+        if self.additional_arguments['mpi']: prepend = "mpirun -np %d " % self.additional_arguments['threads']
 
         qsubparams ="-l nodes=%d" % self.additional_arguments['processes']
+        qsubparams += ":ppn=%s" % str(self.additional_arguments['threads'])
         if self.additional_arguments['time'] !=-1: qsubparams += ",walltime=%s" % str(self.additional_arguments['time'])
         if self.additional_arguments['memory'] !=-1: qsubparams += ",mem=%s" % str(self.additional_arguments['memory'])
         if self.additional_arguments['diskspace'] !=-1: qsubparams += ",file=%s" % str(self.additional_arguments['diskspace'])
