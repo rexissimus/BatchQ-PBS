@@ -1,6 +1,6 @@
 from core.modules.vistrails_module import Module, ModuleError, ModuleSuspended
 from core.system import current_user
-from batchq.batch.commandline import PBS
+from batchq.batch.commandline import PBS, PBSScript
 from batchq.pipelines.shell import FileCommander as BQMachine
 from batchq.core.stack import select_machine, end_machine, use_machine
 from batchq.batch.files import TransferFiles
@@ -92,4 +92,63 @@ class PBSJob(Module):
         files = machine.local.send_command("ls -l %s" % input_directory)
         self.setResult("file_list", [f.split(' ')[-1] for f in files.split('\n')[1:]])
 
-_modules = [Machine, PBSJob]
+class RunPBSScript(Module):
+    _input_ports = [('machine', Machine),
+                    ('command', '(edu.utah.sci.vistrails.basic:String)', True),
+                    ('working_directory', '(edu.utah.sci.vistrails.basic:String)'),
+                    ('input_directory', '(edu.utah.sci.vistrails.basic:String)'),
+                    ('processes', '(edu.utah.sci.vistrails.basic:Integer)', True),
+                    ('time', '(edu.utah.sci.vistrails.basic:String)', True),
+                    ('mpi', '(edu.utah.sci.vistrails.basic:Boolean)', True),
+                    ('threads', '(edu.utah.sci.vistrails.basic:Integer)', True),
+                    ('memory', '(edu.utah.sci.vistrails.basic:String)', True),
+                    ('diskspace', '(edu.utah.sci.vistrails.basic:String)', True),
+                   ]
+    
+    _output_ports = [('stdout', '(edu.utah.sci.vistrails.basic:String)'),
+                     ('stderr', '(edu.utah.sci.vistrails.basic:String)'),
+                    ]
+    
+    def compute(self):
+        if not self.hasInputFromPort('machine'):
+            raise ModuleError(self, "No machine specified")
+        machine = self.getInputFromPort('machine').machine
+        if not self.hasInputFromPort('command'):
+            raise ModuleError(self, "No command specified")
+        command = self.getInputFromPort('command').strip()
+        working_directory = self.getInputFromPort('working_directory') \
+              if self.hasInputFromPort('working_directory') else '.'
+        if not self.hasInputFromPort('input_directory'):
+            raise ModuleError(self, "No input directory specified")
+        input_directory = self.getInputFromPort('input_directory').strip()
+        additional_arguments = {'processes': 1, 'time': -1, 'mpi': False, 'threads': 1,
+                                'memory':-1, 'diskspace': -1}
+        for k in additional_arguments:
+            if self.hasInputFromPort(k):
+                additional_arguments[k] = self.getInputFromPort(k)
+        ## This indicates that the coming commands submitted on the machine
+        # trick to select machine without initializing every time
+
+        use_machine(machine)
+        cdir = CreateDirectory("remote", working_directory)
+        trans = TransferFiles("remote", input_directory, working_directory,
+                              dependencies = [cdir])
+        job = PBSScript("remote", command, working_directory, dependencies = [trans],
+                  **additional_arguments)
+        job.run()
+        self.annotate({'job_info': job.get_job_info()})
+        if not job.finished():
+            status = job.status()
+            end_machine()
+            raise ModuleSuspended(self, 'Job Status: %s' % status, queue=job)
+
+        # copies the created files to the client
+        get_result = TransferFiles("local", input_directory, working_directory,
+                              dependencies = [cdir])
+        get_result.run()
+
+        end_machine()
+        self.setResult("stdout", job.standard_output())
+        self.setResult("stderr", job.standard_error())
+
+_modules = [Machine, PBSJob, RunPBSScript]

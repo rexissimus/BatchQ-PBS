@@ -352,10 +352,10 @@ function pbs_run_job() {
     prepend=$4
     parameters=$5
     qsub_cmd="touch ${batch_id}.running ; ( ${prepend}${cmd} ) 1> ${batch_id}.running 2> ${batch_id}.error ; echo \$? > ${batch_id}.finished ;  if [ \$(cat ${batch_id}.finished) -ne 0 ] ; then mv ${batch_id}.finished ${batch_id}.failed  ;  fi"
-    echo "${qsub_cmd}" > start.pbs
+    echo "${qsub_cmd}" > script.pbs
     rm -rf ${batch_id}.* && (
         touch ${batch_id}.submitted ;
-        qsub start.pbs -o ${batch_id}.log -e /dev/null ${parameters} |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } }' > ${batch_id}.pid ) > /dev/null 2>&1
+        qsub script.pbs -o ${batch_id}.running -e /dev/null ${parameters} |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } else {echo $0} }' > ${batch_id}.pid ) > /dev/null 2>&1
     popd > /dev/null
 }
 
@@ -367,4 +367,23 @@ function pbs_submit_job() {
     fi
 }
 
+function pbs_run_script() {
+    # TODO: add escaping to command
+    pushd $1 > /dev/null
+    batch_id=".batchq.$2"
+    cmd=$3
+    prepend=$4
+    parameters=$5
+    rm -rf ${batch_id}.* && (
+        touch ${batch_id}.submitted ;
+        qsub ${cmd} -o ${batch_id}.running -e ${batch_id}.error ${parameters} |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } else {echo $0} }' > ${batch_id}.pid ) > /dev/null 2>&1
+    popd > /dev/null
+}
 
+function pbs_submit_script() {
+    stat=$(int_status $1 $2)
+    echo $stat
+    if (( $stat <= ${PREPENDING} )) ; then
+	pbs_run_script "$@"
+    fi
+}

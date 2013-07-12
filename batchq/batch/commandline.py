@@ -466,23 +466,6 @@ class PBS(Subshell):
         spid = str(self.pid())       
         return states[spid] if spid in states else ""
 
-    def _get_state(self):
-        ## TODO: Delete this function
-        # TODO: generalise remote/local stuff
-
-        filename = self.machine.remote.mktemp()
-        print "Running:","batchq list_status %s > %s" %(self.working_directory, filename)
-        self.machine.remote.send_command("batchq list_status %s > %s" %(self.working_directory, filename))
-        
-        _,lfilename  = tempfile.mkstemp()
-        self.machine.getfile(filename, lfilename)
-        self.machine.remote.rm(filename)
-        f = open(lfilename)
-        contents = f.read()
-        f.close()
-        print contents
-        self.machine.local.rm(lfilename)
-
     def state(self):
         super(PBS, self).state()
 
@@ -504,6 +487,155 @@ class PBS(Subshell):
             elif stat == "exit": self._state = self.STATE.FAILED # no such state
             elif stat == "C": self._state = self.STATE.FINISHED
 
+        except:
+            self._popw()
+            raise
+        self._popw()
+
+        return self._state
+
+    def generate_identifier(self):
+        ## TODO: Extract information from previous dependencies
+        ## TODO: maybe make it with MD5 or SHA
+        m = hashlib.md5()
+        if self.command is None:
+            return "unkown"
+        m.update(self.command)
+        m.update(self.working_directory)
+        return m.hexdigest() #slugify()
+
+    def log(self):
+        self._pushw()
+        ret = self.terminal.cat("%s.log"%self._identifier_filename)
+        self._popw()
+        return ret 
+
+class PBSScript(Subshell):
+    def __init__(self, terminal, command, working_directory=None, dependencies=None,identifier = None, **kwargs):
+
+
+        if not hasattr(self,"original_command"):
+            self.original_command = command
+        self.additional_arguments = {'processes': 1, 'time': -1, 'mpi': False, 'threads': 1, 'memory':-1, 'diskspace': -1}
+
+
+        # setting the terminal variables
+        self.machine = current_machine()
+        super(PBSScript,self).__init__(terminal, command, working_directory, dependencies,identifier, **kwargs)
+        
+        prepend = ""
+        qsubparams ="-l "
+        if self.additional_arguments['processes'] != 1 or self.additional_arguments['threads'] != 1:
+            qsubparams += "nodes=%s" % self.additional_arguments['processes']
+        if self.additional_arguments['threads'] != 1:
+            qsubparams += ":ppn=%s" % self.additional_arguments['threads']
+        if self.additional_arguments['time'] !=-1: qsubparams += ",walltime=%s" % str(self.additional_arguments['time'])
+        if self.additional_arguments['memory'] !=-1: qsubparams += ",mem=%s" % str(self.additional_arguments['memory'])
+        if self.additional_arguments['diskspace'] !=-1: qsubparams += ",file=%s" % str(self.additional_arguments['diskspace'])
+        if qsubparams == "-l ":
+            qsubparams = ''
+        qsubparams+=" -d ."
+
+        self.batch_arguments = ". \"%s\" \"%s\" \"%s\" \"%s\""%(self._identifier,self.original_command, prepend,qsubparams)
+        self.command = "batchq pbs_submit_script %s"%self.batch_arguments
+        self.has_compression = True
+        self.is_compressed = False
+        self.job_info = None
+
+    def _get_pbs_as_file(self):
+        ## TODO: Clean up this implementation
+        #if not self._pushw():
+        #    return {}
+
+        ## Getting the output
+        filename = ".batchq.tmp.%d" % random.randint(0, 1<< 32)
+        path = self.terminal.path.join(self.working_directory, filename)
+
+        cmd = "qstat `echo $USER`> %s" % filename
+        self.terminal.send_command(cmd)
+        _,lfilename  = tempfile.mkstemp()
+        self.machine.getfile(lfilename, path)
+
+        # Getting value
+        f = open(lfilename)
+        buffer = f.readlines()
+        f.close()
+        
+        # Cleaining up
+        self.machine.remote.rm(filename)
+        self.machine.local.rm(lfilename)
+
+        dct = {}
+        if len(buffer) == 1:
+            return  {}
+        for line in buffer[2:]:
+            x = line.strip()
+            if x == "": continue
+            blocks = filter(lambda q: q!="", [q.strip() for q in x.split(" ")])
+            id = blocks[0].split('.')[0]
+            state = blocks[4]
+            dct[id] = state
+        return dct
+
+    def get_job_info(self):
+        """ Returns job info like which node and
+        parameters the job was run with
+        
+        """
+        if self.job_info:
+            return self.job_info
+        pid = self.pid()
+        if not pid:
+            return None
+        cmd = "qstat -f1 %s" % self.pid()
+        ret = self.terminal.send_command(cmd)
+        if ret:
+            self.job_info = ret
+        return ret
+
+    def _pbs_state(self):
+        global PBS_QJOBS_CACHE
+        i = id(self.terminal) 
+ 
+        states = None
+        now = time.time()
+
+        if i in PBS_QJOBS_CACHE: 
+            to, pstates = PBS_QJOBS_CACHE[i]
+            if to+self.cache_timeout >= now:
+                states =pstates
+        
+        if states is None:
+            states = self._get_pbs_as_file()
+            PBS_QJOBS_CACHE[i] = (now, states)
+
+        spid = str(self.pid())       
+        return states[spid] if spid in states else ""
+
+    def state(self):
+        self.get_job_info()
+        super(PBSScript, self).state()
+
+        if self._state == self.STATE.FINISHED: return self._state
+        if self._state == self.STATE.FAILED: return self._state
+        if self._state == self.STATE.QUEUED: return self._state
+        if self._state == self.STATE.READY: return self._state
+        self._pushw()
+
+        try:
+            stat = self._pbs_state()
+
+            if stat == "H": self._state = self.STATE.PENDING # Held, will not be executed
+            elif stat == "W": self._state = self.STATE.PENDING # waiting for execution time
+            elif stat == "T": self._state = self.STATE.PENDING # being moved to new location
+            elif stat == "Q": self._state = self.STATE.PENDING
+            elif stat == "R":  self._state = self.STATE.RUNNING
+            elif stat == "E":  self._state = self.STATE.RUNNING # finalizing execution
+            elif stat == "exit": self._state = self.STATE.FAILED # no such state
+            elif stat == "C": self._state = self.STATE.FINISHED
+            elif stat == "": # not in queue so either finished or not submitted
+                if self._state >= self.STATE.SUBMITTED:
+                    self._state = self.STATE.FINISHED
         except:
             self._popw()
             raise
