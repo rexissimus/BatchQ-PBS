@@ -50,6 +50,7 @@ class PBSJob(Module):
                     ]
     
     def compute(self):
+        self.is_cacheable = lambda *args, **kwargs: False
         if not self.hasInputFromPort('machine'):
             raise ModuleError(self, "No machine specified")
         machine = self.getInputFromPort('machine').machine
@@ -61,8 +62,8 @@ class PBSJob(Module):
         if not self.hasInputFromPort('input_directory'):
             raise ModuleError(self, "No input directory specified")
         input_directory = self.getInputFromPort('input_directory').strip()
-        additional_arguments = {'processes': 1, 'time': -1, 'mpi': False, 'threads': 1,
-                                'memory':-1, 'diskspace': -1}
+        additional_arguments = {'processes': 1, 'time': -1, 'mpi': False,
+                                'threads': 1, 'memory':-1, 'diskspace': -1}
         for k in additional_arguments:
             if self.hasInputFromPort(k):
                 additional_arguments[k] = self.getInputFromPort(k)
@@ -76,11 +77,28 @@ class PBSJob(Module):
         job = PBS("remote", command, working_directory, dependencies = [trans],
                   **additional_arguments)
         job.run()
-        self.annotate({'job_info': job.get_job_info()})
-        if not job.finished():
-            status = job.status()
+        try:
+            ret = job._ret
+            if ret:
+                job_id = int(ret)
+        except ValueError:
             end_machine()
-            raise ModuleSuspended(self, 'Job Status: %s' % status, queue=job)
+            raise ModuleError(self, "Error submitting job: %s" % ret)
+        finished = job.finished()
+        job_info = job.get_job_info()
+        if job_info:
+            self.annotate({'job_info': job.get_job_info()})
+        if not finished:
+            status = job.status()
+            # try to get more detailed information about the job
+            # this only seems to work on some versions of torque
+            if job_info:
+                comment = [line for line in job_info.split('\n') if line.startswith('comment =')]
+                if comment:
+                    status += ': ' + comment[10:]
+            end_machine()
+            raise ModuleSuspended(self, '%s' % status, queue=job)
+        self.is_cacheable = lambda *args, **kwargs: True
         # copies the created files to the client
         get_result = TransferFiles("local", input_directory, working_directory,
                               dependencies = [cdir])
@@ -90,7 +108,8 @@ class PBSJob(Module):
         self.setResult("stdout", job.standard_output())
         self.setResult("stderr", job.standard_error())
         files = machine.local.send_command("ls -l %s" % input_directory)
-        self.setResult("file_list", [f.split(' ')[-1] for f in files.split('\n')[1:]])
+        self.setResult("file_list",
+                       [f.split(' ')[-1] for f in files.split('\n')[1:]])
 
 class RunPBSScript(Module):
     _input_ports = [('machine', Machine),
@@ -110,6 +129,7 @@ class RunPBSScript(Module):
                     ]
     
     def compute(self):
+        self.is_cacheable = lambda *args, **kwargs: False
         if not self.hasInputFromPort('machine'):
             raise ModuleError(self, "No machine specified")
         machine = self.getInputFromPort('machine').machine
@@ -121,8 +141,8 @@ class RunPBSScript(Module):
         if not self.hasInputFromPort('input_directory'):
             raise ModuleError(self, "No input directory specified")
         input_directory = self.getInputFromPort('input_directory').strip()
-        additional_arguments = {'processes': 1, 'time': -1, 'mpi': False, 'threads': 1,
-                                'memory':-1, 'diskspace': -1}
+        additional_arguments = {'processes': 1, 'time': -1, 'mpi': False,
+                                'threads': 1, 'memory':-1, 'diskspace': -1}
         for k in additional_arguments:
             if self.hasInputFromPort(k):
                 additional_arguments[k] = self.getInputFromPort(k)
@@ -133,15 +153,32 @@ class RunPBSScript(Module):
         cdir = CreateDirectory("remote", working_directory)
         trans = TransferFiles("remote", input_directory, working_directory,
                               dependencies = [cdir])
-        job = PBSScript("remote", command, working_directory, dependencies = [trans],
-                  **additional_arguments)
+        job = PBSScript("remote", command, working_directory,
+                        dependencies = [trans], **additional_arguments)
         job.run()
-        self.annotate({'job_info': job.get_job_info()})
-        if not job.finished():
-            status = job.status()
+        try:
+            ret = job._ret
+            if ret:
+                job_id = int(ret)
+        except ValueError:
             end_machine()
-            raise ModuleSuspended(self, 'Job Status: %s' % status, queue=job)
-
+            raise ModuleError(self, "Error submitting job: %s" % ret)
+        finished = job.finished()
+        job_info = job.get_job_info()
+        if job_info:
+            self.annotate({'job_info': job.get_job_info()})
+        if not finished:
+            status = job.status()
+            # try to get more detailed information about the job
+            # this only seems to work on some versions of torque
+            if job_info:
+                comment = [line.strip() for line in job_info.split('\n')
+                           if line.strip().startswith('comment =')]
+                if comment:
+                    status += ': ' + comment[0][10:]
+            end_machine()
+            raise ModuleSuspended(self, str(status), queue=job)
+        self.is_cacheable = lambda *args, **kwargs: True
         # copies the created files to the client
         get_result = TransferFiles("local", input_directory, working_directory,
                               dependencies = [cdir])

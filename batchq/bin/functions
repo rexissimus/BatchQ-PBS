@@ -1,5 +1,5 @@
 #!/bin/bash
-JOB_FILE=`mktemp`
+JOB_FILE=`mktemp /tmp/BatchQ-jobfile.XXXX`
 FINISHED=6
 FAILED=5
 RUNNING=4
@@ -10,7 +10,7 @@ NOT_SUBMITTED=0
 
 
 session_id=$RANDOM
-update_file=`mktemp`
+update_file=`mktemp /tmp/BatchQ-updatefile.XXXX`
 _update_section() {
     grep -v "$1" "$3" > ${update_file}
     echo "<$1>$2</$1>" >> ${update_file}
@@ -355,7 +355,7 @@ function pbs_run_job() {
     echo "${qsub_cmd}" > script.pbs
     rm -rf ${batch_id}.* && (
         touch ${batch_id}.submitted ;
-        qsub script.pbs -o ${batch_id}.running -e /dev/null ${parameters} |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } else {echo $0} }' > ${batch_id}.pid ) > /dev/null 2>&1
+        qsub -o ${batch_id}.running -e ${batch_id}.error ${parameters} script.pbs 2>&1 |  awk "{ if(match(\$0,/([0-9]+)/)) { printf substr(\$0, RSTART,RLENGTH) > \"${batch_id}.pid\" } else {printf \$0 >> \"${batch_id}.error\"; printf \$0} }")
     popd > /dev/null
 }
 
@@ -376,7 +376,7 @@ function pbs_run_script() {
     parameters=$5
     rm -rf ${batch_id}.* && (
         touch ${batch_id}.submitted ;
-        qsub ${cmd} -o ${batch_id}.running -e ${batch_id}.error ${parameters} |  awk '{ if(match($0,/([0-9]+)/)) { printf substr($0, RSTART,RLENGTH) } else {echo $0} }' > ${batch_id}.pid ) > /dev/null 2>&1
+        qsub -o ${batch_id}.running -e ${batch_id}.error ${parameters} ${cmd} 2>&1 | awk "{ if(match(\$0,/^([0-9]+)/)) { printf substr(\$0, RSTART,RLENGTH) > \"${batch_id}.pid\" } else {printf \$0 >> \"${batch_id}.error\"; printf \$0} }")
     popd > /dev/null
 }
 

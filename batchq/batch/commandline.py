@@ -15,7 +15,7 @@ PBS_QJOBS_CACHE = {}
 class Subshell(Shell):
     def __init__(self, terminal= None, command=None, working_directory=None, dependencies=None,identifier = None, **kwargs):
 
-        self.cache_timeout = 600
+        self.cache_timeout = 5
 
         self.machine = current_machine()
         if not hasattr(self,"original_command"):
@@ -29,11 +29,11 @@ class Subshell(Shell):
 
     def _fetch_pids(self):
         # TODO: do this in a clean way 
-        cmd = "for f in $(find .batchq*.pid -maxdepth 1 -type f) ; do if [ -s $f ] ; then echo \\\"$f\\\": `cat $f | head -n 1`,; fi ; done"
+        cmd = "for f in $(find .batchq*.pid -maxdepth 1 -type f) ; do if [ -s $f ] ; then echo \\\"$f\\\": \\\"`cat $f | head -n 1`\\\",; fi ; done"
         pidlst = self.terminal.send_command(cmd).strip()
         if len(pidlst) > 0 and not "no such file or directory" in pidlst.lower():
             json_in = "{"+pidlst[:-1]+"}"
-#            print json_in
+            #print json_in
             try:
                 ret = json.loads(json_in)
             except:
@@ -45,12 +45,11 @@ class Subshell(Shell):
     @simple_class_cacheable(5)
     def pid(self):
         path = self.terminal.path
-
         filename = self._identifier_filename +".pid"
         cid = "fetchpids_%d_%s"%(id(self.terminal),self.terminal.lazy_pwd())
         pid_dict = simple_call_cache(cid, self._identifier, self.cache_timeout, self._fetch_pids)        
         if filename in pid_dict:
-            return int(pid_dict[filename])
+            return pid_dict[filename]
         return 0
 
 
@@ -324,7 +323,7 @@ class LSF(Subshell):
             states = self._get_lsf_as_file()
             LSF_BJOBS_CACHE[i] = (now, states)
 
-        spid = str(self.pid())       
+        spid = self.pid()       
         return states[spid] if spid in states else ""
 
     def _get_state(self):
@@ -395,7 +394,8 @@ class PBS(Subshell):
         if self.additional_arguments['time'] !=-1: qsubparams += ",walltime=%s" % str(self.additional_arguments['time'])
         if self.additional_arguments['memory'] !=-1: qsubparams += ",mem=%s" % str(self.additional_arguments['memory'])
         if self.additional_arguments['diskspace'] !=-1: qsubparams += ",file=%s" % str(self.additional_arguments['diskspace'])
-        qsubparams+=" -d ."
+        # PBS Pro does not have this
+        #qsubparams+=" -d ."
 
         self.batch_arguments = ". \"%s\" \"%s\" \"%s\" \"%s\""%(self._identifier,self.original_command, prepend,qsubparams)
         self.command = "batchq pbs_submit_job %s"%self.batch_arguments
@@ -411,7 +411,7 @@ class PBS(Subshell):
         filename = ".batchq.tmp.%d" % random.randint(0, 1<< 32)
         path = self.terminal.path.join(self.working_directory, filename)
 
-        cmd = "qstat > %s" % filename
+        cmd = "qstat -u `echo $USER`> %s" % filename
         self.terminal.send_command(cmd)
         _,lfilename  = tempfile.mkstemp()
         self.machine.getfile(lfilename, path)
@@ -442,9 +442,20 @@ class PBS(Subshell):
         parameters the job was run with
         
         """
+        if self.job_info:
+            return self.job_info
         pid = self.pid()
-        cmd = "qstat -f1 %s" % self.pid()
+        if not pid:
+            return None
+        # get qualified name
+        cmd = "qstat | awk '/^%s/ {print $1}'" % self.pid()
+        qual = self.terminal.send_command(cmd)
+        if not qual:
+            return None
+        cmd = "qstat -f1 %s 2>/dev/null" % qual
         ret = self.terminal.send_command(cmd)
+        if ret:
+            self.job_info = ret
         return ret
 
     def _pbs_state(self):
@@ -463,7 +474,7 @@ class PBS(Subshell):
             states = self._get_pbs_as_file()
             PBS_QJOBS_CACHE[i] = (now, states)
 
-        spid = str(self.pid())       
+        spid = self.pid()       
         return states[spid] if spid in states else ""
 
     def state(self):
@@ -477,7 +488,6 @@ class PBS(Subshell):
 
         try:
             stat = self._pbs_state()
-
             if stat == "H": self._state = self.STATE.PENDING # Held, will not be executed
             elif stat == "W": self._state = self.STATE.PENDING # waiting for execution time
             elif stat == "T": self._state = self.STATE.PENDING # being moved to new location
@@ -534,7 +544,8 @@ class PBSScript(Subshell):
         if self.additional_arguments['diskspace'] !=-1: qsubparams += ",file=%s" % str(self.additional_arguments['diskspace'])
         if qsubparams == "-l ":
             qsubparams = ''
-        qsubparams+=" -d ."
+        # PBS Pro does not have this
+        #qsubparams+=" -d ."
 
         self.batch_arguments = ". \"%s\" \"%s\" \"%s\" \"%s\""%(self._identifier,self.original_command, prepend,qsubparams)
         self.command = "batchq pbs_submit_script %s"%self.batch_arguments
@@ -551,7 +562,7 @@ class PBSScript(Subshell):
         filename = ".batchq.tmp.%d" % random.randint(0, 1<< 32)
         path = self.terminal.path.join(self.working_directory, filename)
 
-        cmd = "qstat `echo $USER`> %s" % filename
+        cmd = "qstat -u `echo $USER`> %s" % filename
         self.terminal.send_command(cmd)
         _,lfilename  = tempfile.mkstemp()
         self.machine.getfile(lfilename, path)
@@ -573,8 +584,9 @@ class PBSScript(Subshell):
             if x == "": continue
             blocks = filter(lambda q: q!="", [q.strip() for q in x.split(" ")])
             id = blocks[0].split('.')[0]
-            state = blocks[4]
-            dct[id] = state
+            if len(blocks)>9:
+                state = blocks[9]
+                dct[id] = state
         return dct
 
     def get_job_info(self):
@@ -587,7 +599,12 @@ class PBSScript(Subshell):
         pid = self.pid()
         if not pid:
             return None
-        cmd = "qstat -f1 %s" % self.pid()
+        # get qualified name
+        cmd = "qstat | awk '/^%s/ {print $1}'" % self.pid()
+        qual = self.terminal.send_command(cmd)
+        if not qual:
+            return None
+        cmd = "qstat -f1 %s 2>/dev/null" % qual
         ret = self.terminal.send_command(cmd)
         if ret:
             self.job_info = ret
@@ -596,7 +613,7 @@ class PBSScript(Subshell):
     def _pbs_state(self):
         global PBS_QJOBS_CACHE
         i = id(self.terminal) 
- 
+
         states = None
         now = time.time()
 
@@ -609,11 +626,10 @@ class PBSScript(Subshell):
             states = self._get_pbs_as_file()
             PBS_QJOBS_CACHE[i] = (now, states)
 
-        spid = str(self.pid())       
+        spid = self.pid()
         return states[spid] if spid in states else ""
 
     def state(self):
-        self.get_job_info()
         super(PBSScript, self).state()
 
         if self._state == self.STATE.FINISHED: return self._state
@@ -624,6 +640,7 @@ class PBSScript(Subshell):
 
         try:
             stat = self._pbs_state()
+            self.get_job_info()
 
             if stat == "H": self._state = self.STATE.PENDING # Held, will not be executed
             elif stat == "W": self._state = self.STATE.PENDING # waiting for execution time
