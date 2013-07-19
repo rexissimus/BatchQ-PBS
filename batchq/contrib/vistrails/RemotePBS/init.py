@@ -1,10 +1,12 @@
 from core.modules.vistrails_module import Module, ModuleError, ModuleSuspended
 from core.system import current_user
-from batchq.batch.commandline import PBS, PBSScript
 from batchq.pipelines.shell import FileCommander as BQMachine
-from batchq.core.stack import select_machine, end_machine, use_machine
-from batchq.batch.files import TransferFiles
+from batchq.core.stack import select_machine, end_machine, use_machine, \
+                                                                current_machine
+from batchq.batch.commandline import PBS, PBSScript
 from batchq.batch.directories import CreateDirectory
+from batchq.batch.files import TransferFiles
+from batchq.pipelines.shell.ssh import SSHTerminal
 
 class Machine(Module, BQMachine):
     _input_ports = [('server', '(edu.utah.sci.vistrails.basic:String)', True),
@@ -31,6 +33,39 @@ class Machine(Module, BQMachine):
 Machine._output_ports = [('value', Machine)]
 
     
+class RunCommand(Module):
+    _input_ports = [('machine', Machine),
+                    ('command', '(edu.utah.sci.vistrails.basic:String)', True),
+                    ('cacheable', '(edu.utah.sci.vistrails.basic:Boolean)', True),
+                   ]
+    
+    _output_ports = [('machine', Machine),
+                     ('output', '(edu.utah.sci.vistrails.basic:String)'),
+                    ]
+    
+    def compute(self):
+        self.is_cacheable = lambda *args, **kwargs: False
+        if not self.hasInputFromPort('machine'):
+            raise ModuleError(self, "No machine specified")
+        if not self.hasInputFromPort('command'):
+            raise ModuleError(self, "No command specified")
+        command = self.getInputFromPort('command').strip()
+        machine = self.getInputFromPort('machine').machine
+        cacheable = False
+        if self.hasInputFromPort('cacheable'):
+            cacheable = self.getInputFromPort('cacheable')
+
+        ## This indicates that the coming commands submitted on the machine
+        # trick to select machine without initializing every time
+        use_machine(machine)
+        m = current_machine()
+        result = m.remote.send_command(command)
+        end_machine()
+        if cacheable:
+            self.is_cacheable = lambda *args, **kwargs: True
+        self.setResult("output", result)
+        self.setResult("machine", machine)
+
 class PBSJob(Module):
     _input_ports = [('machine', Machine),
                     ('command', '(edu.utah.sci.vistrails.basic:String)', True),
@@ -188,4 +223,4 @@ class RunPBSScript(Module):
         self.setResult("stdout", job.standard_output())
         self.setResult("stderr", job.standard_error())
 
-_modules = [Machine, PBSJob, RunPBSScript]
+_modules = [Machine, PBSJob, RunPBSScript, RunCommand]
