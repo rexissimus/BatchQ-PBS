@@ -223,4 +223,44 @@ class RunPBSScript(Module):
         self.setResult("stdout", job.standard_output())
         self.setResult("stderr", job.standard_error())
 
-_modules = [Machine, PBSJob, RunPBSScript, RunCommand]
+class SyncDirectories(Module):
+    _input_ports = [('machine', Machine),
+                    ('local_directory', '(edu.utah.sci.vistrails.basic:String)'),
+                    ('remote_directory', '(edu.utah.sci.vistrails.basic:String)'),
+                    ('to_local', '(edu.utah.sci.vistrails.basic:Boolean)'),
+                   ]
+    
+    _output_ports = [('machine', Machine),
+                    ]
+    
+    def compute(self):
+        self.is_cacheable = lambda *args, **kwargs: False
+        if not self.hasInputFromPort('machine'):
+            raise ModuleError(self, "No machine specified")
+        machine = self.getInputFromPort('machine').machine
+        if not self.hasInputFromPort('local_directory'):
+            raise ModuleError(self, "No local directoryspecified")
+        local_directory = self.getInputFromPort('local_directory').strip()
+        if not self.hasInputFromPort('remote_directory'):
+            raise ModuleError(self, "No remote directory specified")
+        remote_directory = self.getInputFromPort('remote_directory').strip()
+        whereto = 'remote'
+        if self.hasInputFromPort('to_local') and self.getInputFromPort('to_local'):
+            whereto = 'local'
+
+
+        ## This indicates that the coming commands submitted on the machine
+        # trick to select machine without initializing every time
+
+        use_machine(machine)
+        to_dir = local_directory if whereto=='local' else remote_directory
+        cdir = CreateDirectory(whereto, to_dir)
+        job = TransferFiles(whereto, local_directory, remote_directory,
+                              dependencies = [cdir])
+        job.run()
+        self.is_cacheable = lambda *args, **kwargs: True
+
+        end_machine()
+        self.setResult("machine", machine)
+
+_modules = [Machine, PBSJob, RunPBSScript, RunCommand, SyncDirectories]
