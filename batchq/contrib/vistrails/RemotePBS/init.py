@@ -239,7 +239,7 @@ class SyncDirectories(Module):
             raise ModuleError(self, "No machine specified")
         machine = self.getInputFromPort('machine').machine
         if not self.hasInputFromPort('local_directory'):
-            raise ModuleError(self, "No local directoryspecified")
+            raise ModuleError(self, "No local directory specified")
         local_directory = self.getInputFromPort('local_directory').strip()
         if not self.hasInputFromPort('remote_directory'):
             raise ModuleError(self, "No remote directory specified")
@@ -263,4 +263,41 @@ class SyncDirectories(Module):
         end_machine()
         self.setResult("machine", machine)
 
-_modules = [Machine, PBSJob, RunPBSScript, RunCommand, SyncDirectories]
+class CopyFile(Module):
+    _input_ports = [('machine', Machine),
+                    ('local_file', '(edu.utah.sci.vistrails.basic:String)'),
+                    ('remote_file', '(edu.utah.sci.vistrails.basic:String)'),
+                    ('to_local', '(edu.utah.sci.vistrails.basic:Boolean)'),
+                   ]
+    
+    _output_ports = [('machine', Machine),
+                    ('output', '(edu.utah.sci.vistrails.basic:String)'),
+                    ]
+    
+    def compute(self):
+        self.is_cacheable = lambda *args, **kwargs: False
+        if not self.hasInputFromPort('machine'):
+            raise ModuleError(self, "No machine specified")
+        machine = self.getInputFromPort('machine').machine
+        if not self.hasInputFromPort('local_file'):
+            raise ModuleError(self, "No local file specified")
+        local_file = self.getInputFromPort('local_file').strip()
+        if not self.hasInputFromPort('remote_file'):
+            raise ModuleError(self, "No remote file specified")
+        remote_file = self.getInputFromPort('remote_file').strip()
+        whereto = 'remote'
+        if self.hasInputFromPort('to_local') and self.getInputFromPort('to_local'):
+            whereto = 'local'
+
+
+        ## This indicates that the coming commands submitted on the machine
+        # trick to select machine without initializing every time
+
+        command = machine.getfile if whereto=='local' else machine.sendfile
+        result = command(local_file, remote_file)
+        self.is_cacheable = lambda *args, **kwargs: True
+
+        self.setResult("machine", machine)
+        self.setResult("output", result)
+
+_modules = [Machine, PBSJob, RunPBSScript, RunCommand, SyncDirectories, CopyFile]
