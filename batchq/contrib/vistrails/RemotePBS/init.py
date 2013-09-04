@@ -30,6 +30,14 @@ class Machine(Module, BQMachine):
         end_machine()
         self.setResult("value", self)
 
+    @property
+    def remote(self):
+        return self.machine.remote
+
+    @property
+    def local(self):
+        return self.machine.local
+
 Machine._output_ports = [('value', Machine)]
 
     

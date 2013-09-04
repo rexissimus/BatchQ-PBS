@@ -88,6 +88,7 @@ class BashTerminal(BasePipe):
         self.send_command("export TERM=\"xterm\"")
         self.send_command("export TERM_PROGRAM=\"Apple_Terminal\"") 
         self.send_command("export TERM_PROGRAM_VERSION=\"273.1\"")
+        self.send_command("export LANG=\"en_US\"")
 
         self.send_command("unset HISTFILE")
         self._entrance = self.send_command("pwd").strip()

@@ -272,6 +272,7 @@ class FileCommander(FileTransferTerminal):
             files =[file for file,_ in lfiles]
             dirs =[dir for dir,_ in ldirs]
             work_dir = remote_dir
+            source_dir = local_dir
         elif mode == self.MODE_REMOTE_LOCAL:
             rfiles, rdirs = self.diff(diff_local_dir, diff_remote_dir, recursive, self.MODE_REMOTE_LOCAL, False, ignore_hidden)
             copyfnc = self.getfile
@@ -280,11 +281,14 @@ class FileCommander(FileTransferTerminal):
             files = [file for _,file in rfiles]
             dirs = [dir for _,dir in rdirs]
             work_dir = local_dir
+            source_dir = remote_dir
         else:
             raise BaseException("Select one and only one mode.")
 
         if not bash.pushd(work_dir):
             raise BaseException("Directory does not exist %s" %work_dir)
+        if not other_bash.pushd(source_dir):
+            raise BaseException("Directory does not exist %s" %source_dir)
 
         # Syncronising directories
         for dir in sorted(dirs):
@@ -302,7 +306,7 @@ class FileCommander(FileTransferTerminal):
                 filename = ".syncronisation_%d.tar" %i
 
             if not other_bash.create_tar(filename, files):
-                raise BaseException("Could not create tar archive: '%s' and '%s'" % (file, other_bash.last_input,other_bash.last_output))
+                raise BaseException("Could not create tar archive %s: '%s' and '%s'" % (file, other_bash.last_input,other_bash.last_output))
 
             if not copyfnc(filename,filename):
                 raise BaseException("Could not transfer tar archive: '%s' and '%s'" % (str(self.last_input),str(self.last_output)))
@@ -325,6 +329,8 @@ class FileCommander(FileTransferTerminal):
 
         if not bash.popd():
             raise "Could not pop working directory"
+        if not other_bash.popd():
+            raise "Could not pop source directory"
 
         self.local_chdir(oldlocal)
         self.chdir(oldremote)
