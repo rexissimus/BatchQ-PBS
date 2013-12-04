@@ -401,6 +401,7 @@ class PBS(Subshell):
         self.command = "batchq pbs_submit_job %s"%self.batch_arguments
         self.has_compression = True
         self.is_compressed = False
+        self.job_info = None
 
     def _get_pbs_as_file(self):
         ## TODO: Clean up this implementation
@@ -433,8 +434,9 @@ class PBS(Subshell):
             if x == "": continue
             blocks = filter(lambda q: q!="", [q.strip() for q in x.split(" ")])
             id = blocks[0].split('.')[0]
-            state = blocks[4]
-            dct[id] = state
+            if len(blocks)>9:
+                state = blocks[9]
+                dct[id] = state
         return dct
 
     def get_job_info(self):

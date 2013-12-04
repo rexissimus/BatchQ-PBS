@@ -72,7 +72,7 @@ class RunCommand(Module):
         if cacheable:
             self.is_cacheable = lambda *args, **kwargs: True
         self.setResult("output", result)
-        self.setResult("machine", machine)
+        self.setResult("machine", self.getInputFromPort('machine'))
 
 class PBSJob(Module):
     _input_ports = [('machine', Machine),
@@ -305,7 +305,7 @@ class CopyFile(Module):
         result = command(local_file, remote_file)
         self.is_cacheable = lambda *args, **kwargs: True
 
-        self.setResult("machine", machine)
+        self.setResult("machine", self.getInputFromPort('machine'))
         self.setResult("output", result)
 
 _modules = [Machine, PBSJob, RunPBSScript, RunCommand, SyncDirectories, CopyFile]
