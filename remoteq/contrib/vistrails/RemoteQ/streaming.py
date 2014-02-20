@@ -214,7 +214,7 @@ class URICreator(NotCacheable,HadoopBaseModule):
         id = 'URICreator' + uri + symlink
         job = jm.getCache(id)
         if not job:
-            if uri[:7]!='hdfs://':
+            if '://' not in uri:
                 prefix = self.get_hadoop_config(machine)['fs.defaultFS']
                 uri = prefix + uri
             uri += '#' + symlink

@@ -122,7 +122,7 @@ class HadoopBaseModule(Module):
             # reading configuration files are error-prone
             #self.read_site_config(machine)
             config['fs.defaultFS'] = \
-                self.call_hdfs('hdfs getconf -confKey fs.defaultFS', machine)
+                self.call_hdfs('getconf -confKey fs.defaultFS', machine)
         return HadoopBaseModule.hadoop_configuration
 
     def call_hadoop(self, arguments, workdir, identifier, machine):
