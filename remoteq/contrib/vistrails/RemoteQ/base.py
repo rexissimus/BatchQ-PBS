@@ -52,8 +52,10 @@ import xml.etree.cElementTree as ET
 
 import hashlib
 
+from init import RQModule
+
 ################################################################################
-class HadoopBaseModule(Module):
+class HadoopBaseModule(RQModule):
     """
     The base class for all modules in the Hadoop package. We would
     like to implement a few basic functionality such as looking for
@@ -64,7 +66,7 @@ class HadoopBaseModule(Module):
     _settings = ModuleSettings(abstract=True)
 
     hadoop_configuration = None
-
+    default_machine = None
     def __init__(self):
         Module.__init__(self)
     

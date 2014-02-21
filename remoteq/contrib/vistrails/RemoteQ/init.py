@@ -32,6 +32,7 @@
 ## ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
 ##
 ###############################################################################
+from vistrails.core.modules.config import ModuleSettings
 from vistrails.core.modules.module_registry import get_module_registry
 from vistrails.core.modules.vistrails_module import Module, ModuleError, ModuleSuspended
 from vistrails.core.system import current_user
@@ -46,10 +47,6 @@ from remoteq.batch.files import TransferFiles
 from remoteq.pipelines.shell.ssh import SSHTerminal
 
 import hashlib
-
-import base
-import hdfs
-import streaming
 
 class Machine(Module, BQMachine):
     _input_ports = [('server', '(edu.utah.sci.vistrails.basic:String)', True),
@@ -67,11 +64,16 @@ class Machine(Module, BQMachine):
                 if self.hasInputFromPort('username') else current_user()
         password = self.getInputFromPort('password') \
                 if self.hasInputFromPort('password') else ''
-        self.machine = BQMachine(server, username, password, port)
-        # force creation of server-side help files
-        select_machine(self.machine)
-        end_machine()
+        self.machine = Machine.create_machine(server, username, password, port)
         self.setResult("value", self)
+
+    @staticmethod
+    def create_machine(server, username, password, port):
+        machine = BQMachine(server, username, password, port)
+        # force creation of server-side help files
+        select_machine(machine)
+        end_machine()
+        return machine
 
     @property
     def remote(self):
@@ -83,8 +85,53 @@ class Machine(Module, BQMachine):
 
 Machine._output_ports = [('value', Machine)]
 
-    
-class RunCommand(Module):
+class RQModule(Module):
+    _settings = ModuleSettings(abstract=True)
+    # a tuple (server, port, username, machine)
+    default_machine = None
+
+    def get_machine(self):
+        if self.hasInputFromPort('machine'):
+            return machine
+        return RQModule.get_default_machine()
+
+    @staticmethod
+    def get_default_machine():
+        server = username = port = password = ''
+        if configuration.check('server'):
+            server = configuration.server
+        if not server:
+            raise ModuleError(self, 'No Machine specified. Either add a '
+                                    'default machine, or a Machine module.')
+        if configuration.check('username'):
+            username = configuration.username
+        if not username:
+            username = current_user()
+        if configuration.check('port'):
+            port = configuration.port
+        # check if it exists or have changed
+        if RQModule.default_machine and \
+           (server, port, username) == RQModule.default_machine[:3]:
+            return RQModule.default_machine[3]
+        if configuration.check('password'):
+            text = 'Enter password for server %s' % configuration.server
+            from PyQt4 import QtGui
+            (password, ok) = QtGui.QInputDialog.getText(None, text, text,
+                                                  QtGui.QLineEdit.Password)
+            if not ok:
+                raise ModuleError(self, "Canceled password")
+        machine = Machine()
+        machine.machine = Machine.create_machine(server,
+                                                 username,
+                                                 password,
+                                                 port)
+        self.annotate({'RemoteQ-server':server,
+                       'RemoteQ-username':username,
+                       'RemoteQ-port':port})
+        RQModule.default_machine = (server, port, username, machine)
+        return machine
+
+class RunCommand(RQModule):
     _input_ports = [('machine', Machine),
                     ('command', '(edu.utah.sci.vistrails.basic:String)', True),
                    ]
@@ -94,12 +141,10 @@ class RunCommand(Module):
                     ]
     
     def compute(self):
-        if not self.hasInputFromPort('machine'):
-            raise ModuleError(self, "No machine specified")
+        machine = self.get_machine().machine
         if not self.hasInputFromPort('command'):
             raise ModuleError(self, "No command specified")
         command = self.getInputFromPort('command').strip()
-        machine = self.getInputFromPort('machine').machine
 
         jm = JobMonitor.getInstance()
         cache = jm.getCache(self.signature)
@@ -116,7 +161,7 @@ class RunCommand(Module):
         self.setResult("output", result)
         self.setResult("machine", self.getInputFromPort('machine'))
 
-class PBSJob(Module):
+class PBSJob(RQModule):
     _input_ports = [('machine', Machine),
                     ('command', '(edu.utah.sci.vistrails.basic:String)', True),
                     ('working_directory', '(edu.utah.sci.vistrails.basic:String)'),
@@ -136,9 +181,7 @@ class PBSJob(Module):
     
     def compute(self):
         self.is_cacheable = lambda *args, **kwargs: False
-        if not self.hasInputFromPort('machine'):
-            raise ModuleError(self, "No machine specified")
-        machine = self.getInputFromPort('machine').machine
+        machine = self.get_machine().machine
         if not self.hasInputFromPort('command'):
             raise ModuleError(self, "No command specified")
         command = self.getInputFromPort('command').strip()
@@ -196,7 +239,7 @@ class PBSJob(Module):
         self.setResult("file_list",
                        [f.split(' ')[-1] for f in files.split('\n')[1:]])
 
-class RunPBSScript(JobMixin,Module):
+class RunPBSScript(JobMixin,RQModule):
     _input_ports = [('machine', Machine),
                     ('command', '(edu.utah.sci.vistrails.basic:String)', True),
                     ('working_directory', '(edu.utah.sci.vistrails.basic:String)'),
@@ -221,9 +264,7 @@ class RunPBSScript(JobMixin,Module):
     def readInputs(self):
         self.job = None
         d = {}
-        if not self.hasInputFromPort('machine'):
-            raise ModuleError(self, "No machine specified")
-        self.machine = self.getInputFromPort('machine').machine
+        machine = self.get_machine().machine
         if not self.hasInputFromPort('command'):
             raise ModuleError(self, "No command specified")
         d['command'] = self.getInputFromPort('command').strip()
@@ -280,7 +321,7 @@ class RunPBSScript(JobMixin,Module):
         self.setResult('stdout', params['stdout'])
         self.setResult('stderr', params['stderr'])
 
-class SyncDirectories(Module):
+class SyncDirectories(RQModule):
     _input_ports = [('machine', Machine),
                     ('local_directory', '(edu.utah.sci.vistrails.basic:String)'),
                     ('remote_directory', '(edu.utah.sci.vistrails.basic:String)'),
@@ -292,9 +333,7 @@ class SyncDirectories(Module):
     
     def compute(self):
         self.is_cacheable = lambda *args, **kwargs: False
-        if not self.hasInputFromPort('machine'):
-            raise ModuleError(self, "No machine specified")
-        machine = self.getInputFromPort('machine').machine
+        machine = self.get_machine().machine
         if not self.hasInputFromPort('local_directory'):
             raise ModuleError(self, "No local directory specified")
         local_directory = self.getInputFromPort('local_directory').strip()
@@ -323,7 +362,7 @@ class SyncDirectories(Module):
 
         self.setResult("machine", machine)
 
-class CopyFile(Module):
+class CopyFile(RQModule):
     _input_ports = [('machine', Machine),
                     ('local_file', '(edu.utah.sci.vistrails.basic:String)'),
                     ('remote_file', '(edu.utah.sci.vistrails.basic:String)'),
@@ -335,9 +374,7 @@ class CopyFile(Module):
                     ]
     
     def compute(self):
-        if not self.hasInputFromPort('machine'):
-            raise ModuleError(self, "No machine specified")
-        machine = self.getInputFromPort('machine').machine
+        machine = self.get_machine().machine
         if not self.hasInputFromPort('local_file'):
             raise ModuleError(self, "No local file specified")
         local_file = self.getInputFromPort('local_file').strip()
@@ -362,8 +399,16 @@ class CopyFile(Module):
         self.setResult("machine", self.getInputFromPort('machine'))
         self.setResult("output", result)
 
-_modules = [Machine, PBSJob, RunPBSScript, RunCommand, SyncDirectories, CopyFile]
 
-_modules.extend(base.register())
-_modules.extend(hdfs.register())
-_modules.extend(streaming.register())
+def initialize():
+    global _modules
+    _modules = [Machine, RQModule, PBSJob, RunPBSScript, RunCommand,
+                SyncDirectories, CopyFile]
+    import base
+    import hdfs
+    import streaming
+    _modules.extend(base.register())
+    _modules.extend(hdfs.register())
+    _modules.extend(streaming.register())
+
+_modules = []

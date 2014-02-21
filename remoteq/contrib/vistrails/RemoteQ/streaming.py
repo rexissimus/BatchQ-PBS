@@ -44,6 +44,8 @@ from base import HadoopBaseModule
 from remoteq.core.stack import select_machine, end_machine, use_machine, \
                                                                 current_machine
 from remoteq.batch.commandline import Subshell
+from init import configuration
+
 import os.path
 ################################################################################
 class HadoopStreaming(JobMixin,HadoopBaseModule):
@@ -90,7 +92,7 @@ class HadoopStreaming(JobMixin,HadoopBaseModule):
         p['files'] = self.forceGetInputListFromPort('CacheFile')
         p['cacheArchives'] = self.forceGetInputListFromPort('CacheArchive')
         p['envVars'] = self.forceGetInputListFromPort('Environment') 
-        self.job_machine = self.getInputFromPort('Machine')
+        self.job_machine = self.get_machine()
         return p
 
     def getId(self, p):
@@ -150,11 +152,16 @@ class HadoopStreaming(JobMixin,HadoopBaseModule):
         for cacheArchive in p['cacheArchives']:
             arguments += ' -cacheArchive %s' % cacheArchive
 
+        from init import configuration
+        if configuration.check('uris') and configuration.uris:
+            for uri in configuration.uris.split(';'):
+                p['files'].append(uri)
         # files is a generic command and needs to be first
         if p['files']:
             generics += ' -files ' + ','.join(p['files'])
 
         arguments = command + generics + arguments
+        print "ARG ^^^^^^^^^^^", arguments
         result = self.call_hadoop(arguments, p['workdir'],
                                   p['job_identifier'], self.job_machine)
         return p
@@ -205,7 +212,7 @@ class URICreator(NotCacheable,HadoopBaseModule):
                      OPort('URI', String)]
 
     def compute(self):
-        machine = self.forceGetInputFromPort('Machine')
+        machine = self.get_machine()
         uri = self.forceGetInputFromPort('HDFS File/URI')
         symlink = self.forceGetInputFromPort('Symlink')
         if uri==None or symlink==None:

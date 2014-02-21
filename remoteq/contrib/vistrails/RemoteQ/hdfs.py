@@ -61,7 +61,7 @@ class HDFSPut(NotCacheable, HadoopBaseModule):
         HadoopBaseModule.__init__(self)
 
     def compute(self):
-        machine = self.getInputFromPort('Machine')
+        machine = self.get_machine()
         remote = self.getInputFromPort('Remote Location')
         local = self.getInputFromPort('Local File')
         override = self.forceGetInputFromPort('Override', False)
@@ -103,7 +103,7 @@ class HDFSGet(NotCacheable, HadoopBaseModule):
         HadoopBaseModule.__init__(self)
 
     def compute(self):
-        machine = self.getInputFromPort('Machine')
+        machine = self.get_machine()
         remote = self.getInputFromPort('Remote Location')
         local = self.getInputFromPort('Local File')
         override = self.forceGetInputFromPort('Override', False)
@@ -152,7 +152,7 @@ class HDFSEnsureNew(NotCacheable, HadoopBaseModule):
         HadoopBaseModule.__init__(self)
 
     def compute(self):
-        machine = self.getInputFromPort('Machine')
+        machine = self.get_machine()
         entry_name = self.getInputFromPort('Name')
         jm = JobMonitor.getInstance()
         id = 'HDFSEnsureNew' + entry_name

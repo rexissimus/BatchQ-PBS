@@ -32,11 +32,19 @@
 ## ADVISED OF THE POSSIBILITY OF SUCH DAMAGE."
 ##
 ###############################################################################
+from vistrails.core.configuration import ConfigurationObject
+
 version = '0.2'
 identifier = 'org.vistrails.vistrails.remoteq'
 name = 'RemoteQ'
 
 old_identifiers = ['org.vistrails.pbs', 'edu.utah.sci.vistrails.hadoop']
+
+configuration = ConfigurationObject(server=(None, str), 
+                                    port=(None, int),
+                                    password=True,
+                                    username=(None, str),
+                                    uris=(None, str))
 
 def package_requirements():
     import vistrails.core.requirements
