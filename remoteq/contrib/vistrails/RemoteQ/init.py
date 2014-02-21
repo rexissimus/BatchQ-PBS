@@ -93,10 +93,9 @@ class RQModule(Module):
     def get_machine(self):
         if self.hasInputFromPort('machine'):
             return machine
-        return RQModule.get_default_machine()
+        return self.get_default_machine()
 
-    @staticmethod
-    def get_default_machine():
+    def get_default_machine(self):
         server = username = port = password = ''
         if configuration.check('server'):
             server = configuration.server
@@ -107,7 +106,7 @@ class RQModule(Module):
             username = configuration.username
         if not username:
             username = current_user()
-        if configuration.check('port'):
+        if configuration.check('port') is not None:
             port = configuration.port
         # check if it exists or have changed
         if RQModule.default_machine and \
