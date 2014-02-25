@@ -11,10 +11,10 @@ class FileTransferTerminal(SFTPTerminal):
     filesystem or not can be checked with FileTransferTerminal.islocal().
     """
 
-    def __init__(self, server = None, username = "", password = "", port = 22, accept_figerprint = False):
+    def __init__(self, server = None, username = "", password = "", port = 22, accept_fingerprint = False):
         self._server = server
         if not server is None:
-            super(FileTransferTerminal,self).__init__(server, username, password, port, accept_figerprint)
+            super(FileTransferTerminal,self).__init__(server, username, password, port, accept_fingerprint)
         else:
             self._remote_dir = os.getcwd()            
             self._local_dir = os.getcwd()            
@@ -91,12 +91,12 @@ class FileCommander(FileTransferTerminal):
     MODE_LOCAL_REMOTE = 1
     MODE_REMOTE_LOCAL = 2
 
-    def __init__(self, server = None, username = "", password = "", port = 22, accept_figerprint = False):
-        super(FileCommander,self).__init__(server, username, password, port, accept_figerprint)
+    def __init__(self, server = None, username = "", password = "", port = 22, accept_fingerprint = False):
+        super(FileCommander,self).__init__(server, username, password, port, accept_fingerprint)
         self._local_bash = BashTerminal()
         self._syncroisation_cache = {}
         if server:
-            self._remote_bash = SSHTerminal(server, username, password, port, accept_figerprint) 
+            self._remote_bash = SSHTerminal(server, username, password, port, accept_fingerprint) 
         else:
             self._remote_bash = BashTerminal()
 
