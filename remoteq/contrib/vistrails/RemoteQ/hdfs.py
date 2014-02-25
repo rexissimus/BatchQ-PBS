@@ -62,15 +62,18 @@ class HDFSPut(NotCacheable, HadoopBaseModule):
 
     def compute(self):
         machine = self.get_machine()
-        remote = self.getInputFromPort('Remote Location')
-        local = self.getInputFromPort('Local File')
-        override = self.forceGetInputFromPort('Override', False)
+        remote = self.get_input('Remote Location')
+        local = self.get_input('Local File')
+        override = self.force_get_input('Override', False)
+        if '://' not in remote:
+            remote = self.add_prefix(remote, machine)
         
         jm = JobMonitor.getInstance()
         id = 'HDFSPut' + remote + str(override)
         job = jm.getCache(id)
         if not job:
-            if not int(self.call_hdfs('dfs -test -e ' + remote + '; echo $?', machine)):
+            if not int(self.call_hdfs('dfs -test -e ' + remote +
+                                      '; echo $?', machine)):
                 if override:
                     self.call_hdfs('dfs -rm -r ' + remote, machine)
                 else:
@@ -80,8 +83,8 @@ class HDFSPut(NotCacheable, HadoopBaseModule):
             self.call_hdfs('dfs -put %s %s' % (tempfile, remote), machine)
             result = machine.remote.rm(tempfile,force=True,recursively=True)
             jm.setCache(id, {}, name='HDFSPut(%s)'%remote)
-        self.setResult('Remote Location', remote)
-        self.setResult('Machine', machine)
+        self.set_output('Remote Location', remote)
+        self.set_output('Machine', machine)
 
 ################################################################################
 class HDFSGet(NotCacheable, HadoopBaseModule):
@@ -104,9 +107,11 @@ class HDFSGet(NotCacheable, HadoopBaseModule):
 
     def compute(self):
         machine = self.get_machine()
-        remote = self.getInputFromPort('Remote Location')
-        local = self.getInputFromPort('Local File')
-        override = self.forceGetInputFromPort('Override', False)
+        remote = self.get_input('Remote Location')
+        local = self.get_input('Local File')
+        override = self.force_get_input('Override', False)
+        if '://' not in remote:
+            remote = self.add_prefix(remote, machine)
 
         jm = JobMonitor.getInstance()
         id = 'HDFSGet' + remote + str(override)
@@ -133,8 +138,8 @@ class HDFSGet(NotCacheable, HadoopBaseModule):
                                           use_tar=True)
             result = machine.remote.rm(tempfile,force=True,recursively=True)
             jm.setCache(id, {}, name='HDFSGet(%s)'%remote)
-        self.setResult('Local File', local)
-        self.setResult('Machine', machine)
+        self.set_output('Local File', local)
+        self.set_output('Machine', machine)
 
 ################################################################################
 class HDFSEnsureNew(NotCacheable, HadoopBaseModule):
@@ -153,16 +158,21 @@ class HDFSEnsureNew(NotCacheable, HadoopBaseModule):
 
     def compute(self):
         machine = self.get_machine()
-        entry_name = self.getInputFromPort('Name')
+        entry_name = self.get_input('Name')
+        if '://' not in entry_name:
+            entry_name = self.add_prefix(entry_name, machine)
         jm = JobMonitor.getInstance()
         id = 'HDFSEnsureNew' + entry_name
         job = jm.getCache(id)
         if not job:
-            if not int(self.call_hdfs('dfs -test -e ' + entry_name + '; echo $?', machine)):
-                self.call_hdfs('dfs -rm -r ' + entry_name, machine)
+            if not int(self.call_hdfs('dfs -test -e ' + entry_name +
+                                      '; echo $?', machine)):
+                #self.call_hdfs('dfs -rm -r ' + entry_name, machine)
+                # we are using -rmr but it is deprecated
+                self.call_hdfs('dfs -rmr ' + entry_name, machine)
             jm.setCache(id, {}, name='HDFSEnsureNew(%s)'%entry_name)
-        self.setResult('Name', entry_name)
-        self.setResult('Machine', machine)
+        self.set_output('Name', entry_name)
+        self.set_output('Machine', machine)
 
 ################################################################################
 def register():

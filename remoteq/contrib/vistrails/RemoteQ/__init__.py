@@ -44,7 +44,8 @@ configuration = ConfigurationObject(server=(None, str),
                                     port=(None, int),
                                     password=True,
                                     username=(None, str),
-                                    uris=(None, str))
+                                    uris=(None, str),
+                                    defaultFS=(None, str))
 
 def package_requirements():
     import vistrails.core.requirements

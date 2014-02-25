@@ -56,20 +56,21 @@ class Machine(Module, BQMachine):
                    ]
     
     def compute(self):
-        server = self.getInputFromPort('server') \
-              if self.hasInputFromPort('server') else 'localhost'
-        port = self.getInputFromPort('port') \
-            if self.hasInputFromPort('port') else 22
-        username = self.getInputFromPort('username') \
-                if self.hasInputFromPort('username') else current_user()
-        password = self.getInputFromPort('password') \
-                if self.hasInputFromPort('password') else ''
+        server = self.get_input('server') \
+              if self.has_input('server') else 'localhost'
+        port = self.get_input('port') \
+            if self.has_input('port') else 22
+        username = self.get_input('username') \
+                if self.has_input('username') else current_user()
+        password = self.get_input('password') \
+                if self.has_input('password') else ''
         self.machine = Machine.create_machine(server, username, password, port)
-        self.setResult("value", self)
+        self.set_output("value", self)
 
     @staticmethod
     def create_machine(server, username, password, port):
-        machine = BQMachine(server, username, password, port)
+        machine = BQMachine(server, username, password, port,
+                            accept_fingerprint=True)
         # force creation of server-side help files
         select_machine(machine)
         end_machine()
@@ -91,7 +92,7 @@ class RQModule(Module):
     default_machine = None
 
     def get_machine(self):
-        if self.hasInputFromPort('machine'):
+        if self.has_input('machine'):
             return machine
         return self.get_default_machine()
 
@@ -141,9 +142,9 @@ class RunCommand(RQModule):
     
     def compute(self):
         machine = self.get_machine().machine
-        if not self.hasInputFromPort('command'):
+        if not self.has_input('command'):
             raise ModuleError(self, "No command specified")
-        command = self.getInputFromPort('command').strip()
+        command = self.get_input('command').strip()
 
         jm = JobMonitor.getInstance()
         cache = jm.getCache(self.signature)
@@ -157,8 +158,8 @@ class RunCommand(RQModule):
             result = m.remote.send_command(command)
             end_machine()
             cache = jm.setCache(self.signature, {'result':result})
-        self.setResult("output", result)
-        self.setResult("machine", self.getInputFromPort('machine'))
+        self.set_output("output", result)
+        self.set_output("machine", self.get_input('machine'))
 
 class PBSJob(RQModule):
     _input_ports = [('machine', Machine),
@@ -181,19 +182,19 @@ class PBSJob(RQModule):
     def compute(self):
         self.is_cacheable = lambda *args, **kwargs: False
         machine = self.get_machine().machine
-        if not self.hasInputFromPort('command'):
+        if not self.has_input('command'):
             raise ModuleError(self, "No command specified")
-        command = self.getInputFromPort('command').strip()
-        working_directory = self.getInputFromPort('working_directory') \
-              if self.hasInputFromPort('working_directory') else '.'
-        if not self.hasInputFromPort('input_directory'):
+        command = self.get_input('command').strip()
+        working_directory = self.get_input('working_directory') \
+              if self.has_input('working_directory') else '.'
+        if not self.has_input('input_directory'):
             raise ModuleError(self, "No input directory specified")
-        input_directory = self.getInputFromPort('input_directory').strip()
+        input_directory = self.get_input('input_directory').strip()
         additional_arguments = {'processes': 1, 'time': -1, 'mpi': False,
                                 'threads': 1, 'memory':-1, 'diskspace': -1}
         for k in additional_arguments:
-            if self.hasInputFromPort(k):
-                additional_arguments[k] = self.getInputFromPort(k)
+            if self.has_input(k):
+                additional_arguments[k] = self.get_input(k)
         ## This indicates that the coming commands submitted on the machine
         # trick to select machine without initializing every time
 
@@ -232,10 +233,10 @@ class PBSJob(RQModule):
         get_result.run()
         ## Popping from the machine stack                                                                                                                                     
         end_machine()
-        self.setResult("stdout", job.standard_output())
-        self.setResult("stderr", job.standard_error())
+        self.set_output("stdout", job.standard_output())
+        self.set_output("stderr", job.standard_error())
         files = machine.local.send_command("ls -l %s" % input_directory)
-        self.setResult("file_list",
+        self.set_output("file_list",
                        [f.split(' ')[-1] for f in files.split('\n')[1:]])
 
 class RunPBSScript(JobMixin,RQModule):
@@ -264,19 +265,19 @@ class RunPBSScript(JobMixin,RQModule):
         self.job = None
         d = {}
         machine = self.get_machine().machine
-        if not self.hasInputFromPort('command'):
+        if not self.has_input('command'):
             raise ModuleError(self, "No command specified")
-        d['command'] = self.getInputFromPort('command').strip()
-        d['working_directory'] = self.getInputFromPort('working_directory') \
-              if self.hasInputFromPort('working_directory') else '.'
-        if not self.hasInputFromPort('input_directory'):
+        d['command'] = self.get_input('command').strip()
+        d['working_directory'] = self.get_input('working_directory') \
+              if self.has_input('working_directory') else '.'
+        if not self.has_input('input_directory'):
             raise ModuleError(self, "No input directory specified")
-        d['input_directory'] = self.getInputFromPort('input_directory').strip()
+        d['input_directory'] = self.get_input('input_directory').strip()
         d['additional_arguments'] = {'processes': 1, 'time': -1, 'mpi': False,
                                 'threads': 1, 'memory':-1, 'diskspace': -1}
         for k in d['additional_arguments']:
-            if self.hasInputFromPort(k):
-                d['additional_arguments'][k] = self.getInputFromPort(k)
+            if self.has_input(k):
+                d['additional_arguments'][k] = self.get_input(k)
         return d
 
     def startJob(self, params):
@@ -317,8 +318,8 @@ class RunPBSScript(JobMixin,RQModule):
         return {'stdout':stdout, 'stderr':stderr}
 
     def setResults(self, params):
-        self.setResult('stdout', params['stdout'])
-        self.setResult('stderr', params['stderr'])
+        self.set_output('stdout', params['stdout'])
+        self.set_output('stderr', params['stderr'])
 
 class SyncDirectories(RQModule):
     _input_ports = [('machine', Machine),
@@ -333,14 +334,14 @@ class SyncDirectories(RQModule):
     def compute(self):
         self.is_cacheable = lambda *args, **kwargs: False
         machine = self.get_machine().machine
-        if not self.hasInputFromPort('local_directory'):
+        if not self.has_input('local_directory'):
             raise ModuleError(self, "No local directory specified")
-        local_directory = self.getInputFromPort('local_directory').strip()
-        if not self.hasInputFromPort('remote_directory'):
+        local_directory = self.get_input('local_directory').strip()
+        if not self.has_input('remote_directory'):
             raise ModuleError(self, "No remote directory specified")
-        remote_directory = self.getInputFromPort('remote_directory').strip()
+        remote_directory = self.get_input('remote_directory').strip()
         whereto = 'remote'
-        if self.hasInputFromPort('to_local') and self.getInputFromPort('to_local'):
+        if self.has_input('to_local') and self.get_input('to_local'):
             whereto = 'local'
 
 
@@ -359,7 +360,7 @@ class SyncDirectories(RQModule):
             end_machine()
             cache = jm.setCache(self.signature, {'result':''})
 
-        self.setResult("machine", machine)
+        self.set_output("machine", machine)
 
 class CopyFile(RQModule):
     _input_ports = [('machine', Machine),
@@ -374,14 +375,14 @@ class CopyFile(RQModule):
     
     def compute(self):
         machine = self.get_machine().machine
-        if not self.hasInputFromPort('local_file'):
+        if not self.has_input('local_file'):
             raise ModuleError(self, "No local file specified")
-        local_file = self.getInputFromPort('local_file').strip()
-        if not self.hasInputFromPort('remote_file'):
+        local_file = self.get_input('local_file').strip()
+        if not self.has_input('remote_file'):
             raise ModuleError(self, "No remote file specified")
-        remote_file = self.getInputFromPort('remote_file').strip()
+        remote_file = self.get_input('remote_file').strip()
         whereto = 'remote'
-        if self.hasInputFromPort('to_local') and self.getInputFromPort('to_local'):
+        if self.has_input('to_local') and self.get_input('to_local'):
             whereto = 'local'
 
         jm = JobMonitor.getInstance()
@@ -395,8 +396,8 @@ class CopyFile(RQModule):
             result = command(local_file, remote_file)
             cache = jm.setCache(self.signature, {'result':result})
 
-        self.setResult("machine", self.getInputFromPort('machine'))
-        self.setResult("output", result)
+        self.set_output("machine", self.get_input('machine'))
+        self.set_output("output", result)
 
 
 def initialize():

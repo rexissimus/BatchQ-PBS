@@ -34,6 +34,7 @@
 ###############################################################################
 """ Base classes for all Hadoop Modules """
 
+from init import configuration
 from vistrails.core.modules.basic_modules import File, String
 from vistrails.gui.modules.python_source_configure import \
                                                 PythonSourceConfigurationWidget
@@ -66,7 +67,6 @@ class HadoopBaseModule(RQModule):
     _settings = ModuleSettings(abstract=True)
 
     hadoop_configuration = None
-    default_machine = None
     def __init__(self):
         Module.__init__(self)
     
@@ -114,18 +114,38 @@ class HadoopBaseModule(RQModule):
                 raise ModuleError(self,
                                   'hadoop-streaming.jar not found. Please add '
                                   'its directory to list of supported paths.')
+            hadoop = (hadoop_home + '/bin/hadoop') if hadoop_home else 'hadoop'
+            hdfs = (hadoop_home + '/bin/hdfs') if hadoop_home else 'hdfs'
+            if not machine.remote.command_exists(hdfs):
+                hdfs = hadoop
             config = {'home': hadoop_home,
-                      'hadoop': (hadoop_home+'/bin/hadoop')
-                                if hadoop_home else 'hadoop',
-                      'hdfs': (hadoop_home+'/bin/hdfs')
-                                if hadoop_home else 'hdfs',
+                      'hadoop': hadoop,
+                      'hdfs': hdfs,
                       'streaming.jar': hs + streamingjar}
             HadoopBaseModule.hadoop_configuration = config
             # reading configuration files are error-prone
             #self.read_site_config(machine)
-            config['fs.defaultFS'] = \
-                self.call_hdfs('getconf -confKey fs.defaultFS', machine)
+            config['fs.defaultFS'] = ''
+            # can access config only if hdfs command exists
+            if hadoop != hdfs:
+                config['fs.defaultFS'] = \
+                    self.call_hdfs('getconf -confKey fs.defaultFS', machine)
         return HadoopBaseModule.hadoop_configuration
+
+    def add_prefix(self, path, machine): 
+        aliases = []
+        if configuration.check('uris') and configuration.uris:
+            aliases = dict([(uri.split('#')[1], uri.split('#')[0])
+                            for uri in configuration.uris.split(';')])
+        if path in aliases:
+            return aliases[path]
+        if configuration.check('defaultFS'):
+            prefix = configuration.defaultFS
+            return prefix + path
+        else:
+            prefix = self.get_hadoop_config(machine)['fs.defaultFS']
+            return prefix + '/' + path
+
 
     def call_hadoop(self, arguments, workdir, identifier, machine):
         self.is_cacheable = lambda *args, **kwargs: False
@@ -156,7 +176,9 @@ class HadoopBaseModule(RQModule):
         # 3. The final version should detach the process on the server
         use_machine(machine.machine)
         cdir = CreateDirectory("remote", workdir)
-        job = Subshell("remote", command=" ".join(argList), working_directory=workdir, identifier=identifier, dependencies=[cdir])
+        job = Subshell("remote", command=" ".join(argList),
+                       working_directory=workdir, identifier=identifier,
+                       dependencies=[cdir])
         job.run()
         finished = job.finished()
         if not finished:
@@ -210,18 +232,18 @@ class PythonSourceToFile(Module):
     _output_ports = [OPort('Temporary File', File)]
 
     def compute(self):
-        inputFile = self.forceGetInputFromPort('Input File')
+        inputFile = self.force_get_input('Input File')
 
         if inputFile!=None:
 #            tempFile = file_pool.make_local_copy(inputFile.name)
             tempFile = inputFile
         else:
-            source = urllib.unquote(self.forceGetInputFromPort('source', ''))
+            source = urllib.unquote(self.force_get_input('source', ''))
             tempFile = self.interpreter.filePool.create_file()
             f = open(tempFile.name, 'w')
             f.write(source)
             f.close()
-        self.setResult('Temporary File', tempFile)
+        self.set_output('Temporary File', tempFile)
             
 
 ################################################################################

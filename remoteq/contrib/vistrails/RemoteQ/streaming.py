@@ -44,7 +44,6 @@ from base import HadoopBaseModule
 from remoteq.core.stack import select_machine, end_machine, use_machine, \
                                                                 current_machine
 from remoteq.batch.commandline import Subshell
-from init import configuration
 
 import os.path
 ################################################################################
@@ -76,22 +75,22 @@ class HadoopStreaming(JobMixin,HadoopBaseModule):
 
     def readInputs(self):
         p = {}
-        self.localMapper = self.forceGetInputFromPort('Mapper')
-        self.localReducer = self.forceGetInputFromPort('Reducer')
-        self.localCombiner = self.forceGetInputFromPort('Combiner')
-        p['workdir'] = self.forceGetInputFromPort('Workdir')
+        self.localMapper = self.force_get_input('Mapper')
+        self.localReducer = self.force_get_input('Reducer')
+        self.localCombiner = self.force_get_input('Combiner')
+        p['workdir'] = self.force_get_input('Workdir')
         if p['workdir']==None:
             p['workdir'] = ".vistrails-hadoop"
-        p['job_identifier'] = self.forceGetInputFromPort('Identifier')
+        p['job_identifier'] = self.force_get_input('Identifier')
         if p['job_identifier'] == None:
             raise ModuleError(self, 'Job Identifier is required')
-        p['input'] = self.forceGetInputFromPort('Input')
-        p['output'] = self.forceGetInputFromPort('Output')
+        p['input'] = self.force_get_input('Input')
+        p['output'] = self.force_get_input('Output')
         if p['input']==None or p['output']==None:
             raise ModuleError(self, 'Input and Output are required')
-        p['files'] = self.forceGetInputListFromPort('CacheFile')
-        p['cacheArchives'] = self.forceGetInputListFromPort('CacheArchive')
-        p['envVars'] = self.forceGetInputListFromPort('Environment') 
+        p['files'] = self.force_get_input_list('CacheFile')
+        p['cacheArchives'] = self.force_get_input_list('CacheArchive')
+        p['envVars'] = self.force_get_input_list('Environment') 
         self.job_machine = self.get_machine()
         return p
 
@@ -116,6 +115,10 @@ class HadoopStreaming(JobMixin,HadoopBaseModule):
         generics = ''
         arguments = ''
 
+        if '://' not in p['input']:
+            p['input'] = self.add_prefix(p['input'], self.job_machine)
+        if '://' not in p['output']:
+            p['output'] = self.add_prefix(p['output'], self.job_machine)
         arguments += ' -input %s -output %s' % (p['input'], p['output'])
         
         if self.localMapper!=None:
@@ -152,16 +155,15 @@ class HadoopStreaming(JobMixin,HadoopBaseModule):
         for cacheArchive in p['cacheArchives']:
             arguments += ' -cacheArchive %s' % cacheArchive
 
-        from init import configuration
-        if configuration.check('uris') and configuration.uris:
-            for uri in configuration.uris.split(';'):
-                p['files'].append(uri)
+        #from init import configuration
+        #if configuration.check('uris') and configuration.uris:
+        #    for uri in configuration.uris.split(';'):
+        #        p['files'].append(uri)
         # files is a generic command and needs to be first
         if p['files']:
             generics += ' -files ' + ','.join(p['files'])
 
         arguments = command + generics + arguments
-        print "ARG ^^^^^^^^^^^", arguments
         result = self.call_hadoop(arguments, p['workdir'],
                                   p['job_identifier'], self.job_machine)
         return p
@@ -177,14 +179,15 @@ class HadoopStreaming(JobMixin,HadoopBaseModule):
         r['workdir'] = p['workdir']
         r['job_identifier'] = p['job_identifier']
         
+        self.annotate({'hadoop_log':self.job.standard_error()})
         if self.job.failed():
             error = self.job.standard_error()
             raise ModuleError(self, error)
         return r
 
     def setResults(self, p):
-        self.setResult('Output', p['output'])
-        self.setResult('Machine', self.job_machine)
+        self.set_output('Output', p['output'])
+        self.set_output('Machine', self.job_machine)
 
     def call_hadoop(self, arguments, workdir, identifier, machine):
         config = self.get_hadoop_config(machine)
@@ -195,6 +198,7 @@ class HadoopStreaming(JobMixin,HadoopBaseModule):
             argList += arguments
         else:
             raise ModuleError(self, 'Invalid argument types to hadoop')
+        self.annotate({'hadoop_command':" ".join(argList)})
         self.job.command = self.job.command % " ".join(argList)
         self.job.run()
 
@@ -213,8 +217,8 @@ class URICreator(NotCacheable,HadoopBaseModule):
 
     def compute(self):
         machine = self.get_machine()
-        uri = self.forceGetInputFromPort('HDFS File/URI')
-        symlink = self.forceGetInputFromPort('Symlink')
+        uri = self.force_get_input('HDFS File/URI')
+        symlink = self.force_get_input('Symlink')
         if uri==None or symlink==None:
             raise ModuleError(self, "Missing 'HDFS File/URI' or 'Symlink' values")
         jm = JobMonitor.getInstance()
@@ -222,12 +226,11 @@ class URICreator(NotCacheable,HadoopBaseModule):
         job = jm.getCache(id)
         if not job:
             if '://' not in uri:
-                prefix = self.get_hadoop_config(machine)['fs.defaultFS']
-                uri = prefix + uri
+                uri = self.add_prefix(uri, machine)
             uri += '#' + symlink
             jm.setCache(id, {}, name='URICreator(%s)'%uri)
-        self.setResult('URI', uri)
-        self.setResult('Machine', machine)
+        self.set_output('URI', uri)
+        self.set_output('Machine', machine)
        
 
 ################################################################################
